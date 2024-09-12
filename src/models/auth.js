@@ -1,6 +1,16 @@
 const db = require("../config/postgresql");
 
 module.exports = {
+  getAlldata: () =>
+    new Promise((resolve, reject) => {
+      db.query("SELECT * FROM users", (error, result) => {
+        if (!error) {
+          resolve(result);
+        } else {
+          reject(new Error(error));
+        }
+      });
+    }),
   registerAdmin: (data) =>
     new Promise((resolve, reject) => {
       db.query(
@@ -62,6 +72,42 @@ module.exports = {
       db.query(
         `UPDATE users SET password=$1 WHERE "userId"=$2  RETURNING *`,
         [data.password, userId],
+        (error, result) => {
+          if (!error) {
+            resolve(result);
+          } else {
+            reject(new Error(error));
+          }
+        }
+      );
+    }),
+  updateProfile: (userId, data) =>
+    new Promise((resolve, reject) => {
+      db.query(
+        `UPDATE users SET name=$1, username=$2, gender=$3, address=$4, "dateOfBirth"=$5, "phoneNumber"=$6 WHERE "userId"=$7`,
+        [
+          data.name,
+          data.username,
+          data.gender,
+          data.address,
+          data.dateOfBirth,
+          data.phoneNumber,
+          userId,
+        ],
+        (error, result) => {
+          if (!error) {
+            resolve(result);
+          } else {
+            reject(new Error(error));
+          }
+        }
+      );
+    }),
+  updateImages: (id, data) =>
+    new Promise((resolve, reject) => {
+      db.query(
+        `UPDATE users SET image=$1 WHERE "userId"=$2 RETURNING * `,
+        [data.image, id],
         (error, result) => {
           if (!error) {
             resolve(result);

@@ -2,24 +2,36 @@ const connection = require("../config/postgresql");
 
 module.exports = {
   // sort by ASC or DESC still not working
-  getAllVehicles: (keyword, limit, offset, orderBy, orderType) =>
+  getAllVehicles: (keyword, limit, offset, orderBy, orderType, location) =>
     new Promise((resolve, reject) => {
-      connection.query(
-        `SELECT * FROM vehicles WHERE name ilike '%' || $1 ||'%' ORDER BY $2 ${orderType.toLowerCase()} LIMIT $3 OFFSET $4`,
-        [keyword, orderBy, limit, offset],
-        (error, result) => {
-          if (!error) {
-            resolve(result);
-          } else {
-            reject(new Error(error));
-          }
+      let i = 1;
+      let sqlQuery = `SELECT v.*, l."name" as "locationName", t."name" as "typeName" FROM vehicles v JOIN locations l on v."locationId" = l."locationId" JOIN types t on v."typeId" = t."typeId" WHERE v.name ilike '%' || $${i} ||'%' `;
+
+      const sqlQueryValues = [keyword];
+      if (location) {
+        i += 1;
+        sqlQuery += `AND v."locationId" = $${i} `;
+        sqlQueryValues.push(location);
+      }
+
+      sqlQuery += `ORDER BY v."${orderBy}" ${orderType} LIMIT $${
+        i + 1
+      } OFFSET $${i + 2}`;
+
+      sqlQueryValues.push(limit, offset);
+
+      connection.query(sqlQuery, sqlQueryValues, (error, result) => {
+        if (!error) {
+          resolve(result);
+        } else {
+          reject(new Error(error));
         }
-      );
+      });
     }),
   getVehicleById: (id) =>
     new Promise((resolve, reject) => {
       connection.query(
-        `SELECT * FROM vehicles WHERE "vehicleId" = $1`,
+        `SELECT v.*, l."name" as "locationName", t."name" as "typeName" FROM vehicles v JOIN locations l on v."locationId" = l."locationId" JOIN types t on v."typeId" = t."typeId" WHERE v."vehicleId" = $1`,
         [id],
         (error, result) => {
           if (!error) {
@@ -33,7 +45,7 @@ module.exports = {
   addNewVehicle: (data) =>
     new Promise((resolve, reject) => {
       connection.query(
-        `INSERT INTO vehicles ("typeId", name, status, price, stock, description, "rentCount") VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+        `INSERT INTO vehicles ("typeId", name, status, price, stock, description, "rentCount", "locationId", image1, image2, image3) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
         [
           data.typeId,
           data.name,
@@ -42,20 +54,60 @@ module.exports = {
           data.stock,
           data.description,
           data.rentCount,
+          data.locationId,
+          data.image1,
+          data.image2,
+          data.image3,
         ],
         (error, result) => {
           if (!error) {
             resolve(result);
           } else {
-            reject(new Error(error));
+            reject(result);
           }
         }
       );
+
+      // let sqlQuery1 = `INSERT INTO vehicles ("typeId", name, status, price, stock, description, "rentCount", "locationId"`;
+      // const sqlValues = [
+      //   data.typeId,
+      //   data.name,
+      //   data.status,
+      //   data.price,
+      //   data.stock,
+      //   data.description,
+      //   data.rentCount,
+      //   data.locationId,
+      // ];
+
+      // let sqlQuery2 = `) VALUES ($1, $2, $3, $4, $5, $6, $7, $8`;
+      // const sqlQuery3 = `) RETURNING *`;
+      // let i = 1;
+      // let j = 9;
+
+      // // eslint-disable-next-line array-callback-return
+      // data.images.map((image) => {
+      //   sqlQuery1 += `, image${i}`;
+      //   sqlQuery2 += `, $${j}`;
+      //   sqlValues.push(image);
+      //   i += 1;
+      //   j += 1;
+      // });
+
+      // const finalQuery = sqlQuery1 + sqlQuery2 + sqlQuery3;
+
+      // connection.query(finalQuery, sqlValues, (error, result) => {
+      //   if (!error) {
+      //     resolve(result);
+      //   } else {
+      //     reject(new Error(error));
+      //   }
+      // });
     }),
   getVehicleByType: (type, offset, limit) =>
     new Promise((resolve, reject) => {
       connection.query(
-        `SELECT * FROM vehicles WHERE "typeId" = $1 LIMIT $2 OFFSET $3`,
+        `SELECT v.*, l."name" as "locationName", t."name" as "typeName" FROM vehicles v JOIN locations l on v."locationId" = l."locationId" JOIN types t on v."typeId" = t."typeId" WHERE v."typeId" = $1 LIMIT $2 OFFSET $3`,
         [type, limit, offset],
         (error, result) => {
           if (!error) {

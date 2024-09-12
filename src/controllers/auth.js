@@ -1,9 +1,13 @@
+/* eslint-disable prettier/prettier */
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const authModel = require("../models/auth");
+// const updateTime = require("../utils/updateTime");
+const cloudinary = require("../config/cloudinary");
 const wrapper = require("../utils/wrapper");
 const { sendMail, mailForgotPassword } = require("../utils/mail");
 const client = require("../config/redis");
+const hash = require("../utils/hash");
 
 module.exports = {
   registerAdmin: async (request, response) => {
@@ -19,12 +23,12 @@ module.exports = {
         return wrapper.response(response, 400, "Password at least 6 character");
       }
 
-      const hash = bcrypt.hashSync(password, 10);
+      const hashPass = bcrypt.hashSync(password, 10);
       const setData = {
         name,
         email,
         role: "admin",
-        password: hash,
+        password: hashPass,
       };
 
       const minm = 100000;
@@ -76,12 +80,12 @@ module.exports = {
         return wrapper.response(response, 400, "Password at least 6 character");
       }
 
-      const hash = bcrypt.hashSync(password, 10);
+      const hashPass = bcrypt.hashSync(password, 10);
       const setData = {
         name,
         email,
         role: "user",
-        password: hash,
+        password: hashPass,
       };
 
       const minm = 100000;
@@ -93,7 +97,7 @@ module.exports = {
         name,
         subject: "Email Verification",
         template: "verify.html",
-        actionUrl: `localhost:3001/api/auth/verify/${otp}`,
+        actionUrl: `https://renta-project-server.vercel.app/api/auth/verify/${otp}`,
       };
       await sendMail(setMailOptions);
 
@@ -148,15 +152,14 @@ module.exports = {
         expiresIn: "24h",
       });
 
-      // const refreshToken = jwt.sign(payload, process.env.REFRESH_TOKEN, {
-      //   expiresIn: "36h",
-      // });
+      const refreshToken = jwt.sign(payload, process.env.REFRESH_TOKEN, {
+        expiresIn: "36h",
+      });
 
       const newResult = {
         userId: checkEmail.rows[0].userId,
-        role: checkEmail.rows[0].role,
         token,
-        // refreshToken,
+        refreshToken,
       };
       return wrapper.response(response, 200, "Success Login", newResult);
     } catch (error) {
@@ -202,11 +205,11 @@ module.exports = {
   logout: async (request, response) => {
     try {
       const authHeader = request.headers.authorization;
-      // const { refreshtoken } = request.headers;
+      const { refreshtoken } = request.headers;
 
       const token = authHeader.split(" ")[1];
       client.setEx(token, 3600 * 2, token);
-      // client.setEx(refreshtoken, 3600 * 2, refreshtoken);
+      client.setEx(refreshtoken, 3600 * 2, refreshtoken);
 
       return wrapper.response(response, 200, "Success Logout");
     } catch (error) {
@@ -236,9 +239,9 @@ module.exports = {
       const setMailOptions = {
         to: email,
         name,
-        subject: "Email Verification",
-        template: "verify.html",
-        actionUrl: `localhost:3001/api/users/verify/${otp}`,
+        subject: "Reset Password",
+        template: "forgotpw.html",
+        actionUrl: `http://localhost:3000/auth/password/reset/${otp}`,
       };
 
       client.set(`${otp}`, JSON.stringify(userId));
@@ -288,15 +291,190 @@ module.exports = {
         return wrapper.response(response, 400, "Password Not Match", null);
       }
 
-      const hash = bcrypt.hashSync(newPassword, 10);
+      const hashPass = bcrypt.hashSync(newPassword, 10);
       const setData = {
-        password: hash,
+        password: hashPass,
       };
       await authModel.updatePassword(userId, setData);
 
       const result = [{ userId: checkId.rows[0].userId }];
 
       return wrapper.response(response, 200, "Success Reset Password ", result);
+    } catch (error) {
+      const {
+        status = 500,
+        statusText = "Internal Server Error",
+        error: errorData = null,
+      } = error;
+      return wrapper.response(response, status, statusText, errorData);
+    }
+  },
+  getDatabyId: async (request, response) => {
+    try {
+      const { id } = request.params;
+      const result = await authModel.getUserByID(id);
+
+      return wrapper.response(
+        response,
+        200,
+        "Success get data by id",
+        result.rows
+      );
+    } catch (error) {
+      const {
+        status = 500,
+        statusText = "Internal Server Error",
+        error: errorData = null,
+      } = error;
+      return wrapper.response(response, status, statusText, errorData);
+    }
+  },
+  getAllUser: async (request, response) => {
+    try {
+      const result = await authModel.getAlldata();
+      return wrapper.response(
+        response,
+        200,
+        "Success get all data",
+        result.rows,
+        {
+          totalData: result.rowCount,
+        }
+      );
+    } catch (error) {
+      const {
+        status = 500,
+        statusText = "Internal Server Error",
+        error: errorData = null,
+      } = error;
+      return wrapper.response(response, status, statusText, errorData);
+    }
+  },
+  updateUserData: async (request, response) => {
+    try {
+      const { id } = request.params;
+      const { name, username, gender, address, dateOfBirth, phoneNumber } =
+        request.body;
+
+      const checkId = await authModel.getUserByID(id);
+
+      if (checkId.rows.length < 1) {
+        return wrapper.response(response, 404, `User is not Found`, []);
+      }
+      // const dateTime = updateTime.dateTime();
+      const updateData = {
+        name: name === ""||null?checkId.rows[0].name : name ,
+        username: username === ""||null?checkId.rows[0].username : username ,
+        gender: gender === ""||null?checkId.rows[0].gender : gender,
+        address: address === ""||null?checkId.rows[0].address : address,
+        dateOfBirth: dateOfBirth === ""||null?checkId.rows[0].dateOfBirth : dateOfBirth,
+        phoneNumber: phoneNumber === ""||null?checkId.rows[0].phoneNumber : phoneNumber,
+      };
+
+      await authModel.updateProfile(id, updateData);
+      const result = await authModel.getUserByID(id);
+
+      return wrapper.response(
+        response,
+        200,
+        "Success Update Profile",
+        result.rows
+      );
+    } catch (error) {
+      const {
+        status = 500,
+        statusText = "Internal Server Error",
+        error: errorData = null,
+      } = error;
+      return wrapper.response(response, status, statusText, errorData);
+    }
+  },
+  updateImages: async (request, response) => {
+    try {
+      const { id } = request.params;
+
+      const isFalid = await authModel.getUserByID(id);
+
+      if (!request.file) {
+        return wrapper.response(response, 400, "Image must be filled", null);
+      }
+      const { filename } = request.file;
+      let newImages;
+
+      if (isFalid.rows.length < 1) {
+        return wrapper.response(response, 404, `User is not Found`, []);
+      }
+      if (isFalid.rows[0].image === null) {
+        newImages = filename;
+      }
+
+      if (isFalid.rows[0].image) {
+        await cloudinary.uploader.destroy(isFalid.rows[0].image);
+        newImages = filename;
+      }
+
+      const inputData = {
+        image: newImages,
+      };
+
+      const result = await authModel.updateImages(id, inputData);
+      return wrapper.response(
+        response,
+        200,
+        "Success Update Image Profile",
+        result.rows
+      );
+    } catch (error) {
+      const {
+        status = 500,
+        statusText = "Internal Server Error",
+        error: errorData = null,
+      } = error;
+      return wrapper.response(response, status, statusText, errorData);
+    }
+  },
+  updatePasswordUser: async (request, response) => {
+    try {
+      const { id } = request.params;
+
+      const { oldPassword, newPassword, confirmPassword } = request.body;
+
+      const isFalid = await authModel.getUserByID(id);
+
+      if (isFalid.rows.length < 1) {
+        return wrapper.response(response, 404, `User is not Found`, []);
+      }
+      const getPass = await authModel.getUserByID(id);
+
+      const checkPassword = hash.checkPassword(
+        oldPassword,
+        getPass.rows[0].password
+      );
+
+      if (checkPassword === false) {
+        return wrapper.response(response, 401, `Current password false`);
+      }
+
+      if (newPassword !== confirmPassword) {
+        return wrapper.response(
+          response,
+          401,
+          `New password and confirm password did not match`
+        );
+      }
+      const hashPw = hash.hashPass(confirmPassword);
+
+      const updatePassword = {
+        password: hashPw,
+      };
+
+      const result = await authModel.updatePassword(id, updatePassword);
+      return wrapper.response(
+        response,
+        200,
+        "Success Update password",
+        result.rows
+      );
     } catch (error) {
       const {
         status = 500,
